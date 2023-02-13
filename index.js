@@ -79,4 +79,4 @@ function transform(ast) {
   }
 }
 
-main('./test/input.styl', './test/output.less');
+main('./work/input.styl', './work/output.less');
