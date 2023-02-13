@@ -2,60 +2,81 @@ const fs = require('fs');
 
 function main (source, destination) {
   let data = fs.readFileSync(source, 'utf8');
-  data = convert(data)
-  fs.writeFileSync(destination, data);
+  let ast  = constructAST(data)
+  let res = transform(ast)
+  fs.writeFileSync(destination, res);
 }
 
-function convert (content) {
-  const res_list = []
+class Node {
+  constructor (text, parent, rank, children) {
+    this.text = text || ''
+    this.parent = parent || null
+    this.children = children || []
+  }
+}
+
+function constructAST (content) {
   let lines = content.split('\n').filter(line => /\S/.test(line))
+  let ast = new Node()
+  let pointNode = ast
+  let lastRank = -1
   for (let i = 0; i < lines.length; i++) {
     let line = lines[i].replace(/\s+$/, '')
-
     // 分析 rank
-    let white_prefix  = line.match(/^[ \t]*/)
-    let space_count = (white_prefix[0].match(/ /g) || []).length;
-    let tab_count = (white_prefix[0].match(/\t/g) || []).length;
-    let rank = space_count / 2 + tab_count
+    let whitePrefix  = line.match(/^[ \t]*/)
+    let spaceCount = (whitePrefix[0].match(/ /g) || []).length;
+    let tabCount = (whitePrefix[0].match(/\t/g) || []).length;
+    let rank = spaceCount / 2 + tabCount
 
-    let last = res_list[res_list.length - 1]
-    if (last) {
-      if (rank > last.rank) {
-        last.text = last.text + ' {'
+    let node = new Node(line)
+    if (rank > lastRank || lastRank == -1) {
+      node.parent = pointNode
+      pointNode.children.push(node)
+      pointNode = node
+    }
+    else {
+      let pos = lastRank
+      while (pos -- >= rank) {
+        pointNode = pointNode.parent
       } 
-      else if (rank < last.rank) {
-        let tab_num = last.rank - 1
-        while (tab_num >= rank) {
-          res_list.push({
-            text: '  '.repeat(tab_num) + '}',
-            rank: tab_num
-          })
-          tab_num --
+      node.parent = pointNode
+      pointNode.children.push(node)
+    }
+    pointNode = node
+    lastRank = rank
+  }
+  return ast
+}
+
+function transform(ast) {
+  let res = ''
+  preOrderTraversal(ast)
+  return res
+
+  function preOrderTraversal(node) {
+    if (node !== null) {
+      let isSelector = node.text && node.children.length
+      if (node.text) {
+        let text = node.text
+        if (isSelector) {
+          text = node.text + ' {'
         }
+        else {
+          // 末尾分号
+          if (!text.endsWith(';')) {
+            text += ';'
+          }
+        }
+        res += (text + '\n')
       }
-      else {
-        // WARN
-        // line = line[line.length - 1] === ';' ? line : line + ';'
+      for (let child of node.children) {
+        preOrderTraversal(child);
+      }
+      if (isSelector) {
+        res += node.text.match(/^[ \t]*/) + '}\n'
       }
     }
-    res_list.push({
-      text: line,
-      rank
-    })
-    console.log(line);
   }
-  // 收尾
-  let last = res_list[res_list.length - 1]
-  let tab_num = last.rank - 1
-  let rank = res_list[0].rank
-  while (tab_num >= rank) {
-    res_list.push({
-      text: '  '.repeat(tab_num) + '}',
-      rank: tab_num
-    })
-    tab_num --
-  }
-  return res_list.map(line => line.text).join('\n')
 }
 
 main('./test/input.styl', './test/output.less');
